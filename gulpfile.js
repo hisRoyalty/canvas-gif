@@ -4,8 +4,17 @@ const typescript = require('gulp-typescript');
 const ttypescript = require('ttypescript');
 const { createMinifier } = require('dts-minify');
 const tsMinifier = createMinifier(ttypescript);
-const glob = require('glob');
+const glob = require('tiny-glob');
 const fs = require('fs');
+const rimraf = require('rimraf');
+
+gulp.task(
+	'clean',
+	() =>
+		new Promise((resolve, reject) =>
+			rimraf('dist', {}, (err) => (err ? reject(err) : resolve()))
+		)
+);
 
 gulp.task('build', () => {
 	const tsc = typescript.createProject('tsconfig.json', {
@@ -22,20 +31,24 @@ gulp.task('minify:ts', () => {
 gulp.task(
 	'minify:dts',
 	() =>
-		new Promise((resolve, reject) => {
-			glob('dist/**/*.d.ts', (err, files) => {
-				if (err) return reject(err);
+		new Promise(async (resolve) => {
+			const toDelete = [...(await glob('dist/utils/**/*.d.ts'))];
 
-				files.forEach((file) => {
-					const content = fs.readFileSync(file).toString();
-					const minified = tsMinifier.minify(content);
+			const files = (await glob('dist/**/*.d.ts')).filter(
+				(file) => !toDelete.includes(file)
+			);
 
-					fs.writeFileSync(file, minified);
-				});
+			files.forEach((file) => {
+				const content = fs.readFileSync(file).toString();
+				const minified = tsMinifier.minify(content);
 
-				resolve();
+				fs.writeFileSync(file, minified);
 			});
+
+			toDelete.forEach((file) => fs.rmSync(file));
+
+			resolve();
 		})
 );
 
-gulp.task('default', gulp.series('build', 'minify:ts', 'minify:dts'));
+gulp.task('default', gulp.series('clean', 'build', 'minify:ts', 'minify:dts'));
